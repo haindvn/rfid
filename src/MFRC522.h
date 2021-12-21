@@ -354,6 +354,7 @@ public:
 	void MIFARE_SetAccessBits(byte *accessBitBuffer, byte g0, byte g1, byte g2, byte g3);
 	bool MIFARE_OpenUidBackdoor(bool logErrors);
 	bool MIFARE_SetUid(byte *newUid, byte uidSize, bool logErrors);
+	bool MIFARE_Set_Block0(byte *data, bool logErrors);
 	bool MIFARE_UnbrickUidSector(bool logErrors);
 	
 	/////////////////////////////////////////////////////////////////////////////////////
