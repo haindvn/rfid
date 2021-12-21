@@ -1893,6 +1893,96 @@ bool MFRC522::MIFARE_SetUid(byte *newUid, byte uidSize, bool logErrors) {
 }
 
 /**
+ * Set entire block 0 of sector 0 
+ */
+
+bool MFRC522::MIFARE_Set_Block0(byte *data, bool logErrors) {
+	
+	// UID + BCC byte can not be larger than 16 together
+	if (!newUid || !uidSize || uidSize > 15) {
+		if (logErrors) {
+			Serial.println(F("New UID buffer empty, size 0, or size > 15 given"));
+		}
+		return false;
+	}
+	
+	// Authenticate for reading
+	MIFARE_Key key = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+	MFRC522::StatusCode status = PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, (byte)1, &key, &uid);
+	if (status != STATUS_OK) {
+		
+		if (status == STATUS_TIMEOUT) {
+			// We get a read timeout if no card is selected yet, so let's select one
+			
+			// Wake the card up again if sleeping
+//			  byte atqa_answer[2];
+//			  byte atqa_size = 2;
+//			  PICC_WakeupA(atqa_answer, &atqa_size);
+			
+			if (!PICC_IsNewCardPresent() || !PICC_ReadCardSerial()) {
+				Serial.println(F("No card was previously selected, and none are available. Failed to set UID."));
+				return false;
+			}
+			
+			status = PCD_Authenticate(MFRC522::PICC_CMD_MF_AUTH_KEY_A, (byte)1, &key, &uid);
+			if (status != STATUS_OK) {
+				// We tried, time to give up
+				if (logErrors) {
+					Serial.println(F("Failed to authenticate to card for reading, could not set UID: "));
+					Serial.println(GetStatusCodeName(status));
+				}
+				return false;
+			}
+		}
+		else {
+			if (logErrors) {
+				Serial.print(F("PCD_Authenticate() failed: "));
+				Serial.println(GetStatusCodeName(status));
+			}
+			return false;
+		}
+	}
+	
+		
+	// Write new UID to the data we just read, and calculate BCC byte
+	byte bcc = 0;
+	for (uint8_t i = 0; i < 3; i++) {
+		bcc ^= newUid[i];
+	}
+	
+	// Write BCC byte to buffer
+	data[4] = bcc;
+	
+	// Stop encrypted traffic so we can send raw bytes
+	PCD_StopCrypto1();
+	
+	// Activate UID backdoor
+	if (!MIFARE_OpenUidBackdoor(logErrors)) {
+		if (logErrors) {
+			Serial.println(F("Activating the UID backdoor failed."));
+		}
+		return false;
+	}
+	
+	// Write modified block 0 back to card
+	status = MIFARE_Write((byte)0, data, (byte)16);
+	if (status != STATUS_OK) {
+		if (logErrors) {
+			Serial.print(F("MIFARE_Write() failed: "));
+			Serial.println(GetStatusCodeName(status));
+		}
+		return false;
+	}
+	
+	// Wake the card up again
+	byte atqa_answer[2];
+	byte atqa_size = 2;
+	PICC_WakeupA(atqa_answer, &atqa_size);
+	
+	return true;
+}
+
+/**
  * Resets entire sector 0 to zeroes, so the card can be read again by readers.
  */
 bool MFRC522::MIFARE_UnbrickUidSector(bool logErrors) {
